@@ -90,15 +90,6 @@
   .parse-result.ok { background: var(--green-bg); color: var(--green); display: block; }
   .parse-result.err { background: var(--red-bg); color: var(--red); display: block; }
 
-  /* Conclusion */
-  .conclusion { margin-top: .75rem; padding: .75rem 1rem; background: var(--surface-alt); border-radius: var(--radius); border-left: 2px solid var(--border); }
-  .conclusion.buy { background: var(--green-bg); border-left-color: var(--green-border); }
-  .conclusion.review { background: var(--amber-bg); border-left-color: var(--amber-border); }
-  .conclusion.skip { background: var(--red-bg); border-left-color: var(--red-border); }
-  .conclusion-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); margin-bottom: 4px; }
-  .conclusion-text { font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
-  .conclusion-text.loading { opacity: .5; font-style: italic; }
-
   @media (max-width: 540px) {
     .stats { grid-template-columns: repeat(2,1fr); }
   }
@@ -107,7 +98,7 @@
 <body>
 <div class="container">
   <header>
-    <h1>BARK Lead Scorer</h1>
+    <h1>Bark.com Lead Scorer</h1>
     <p>Paste your Bark leads below — automatic scoring applied instantly</p>
   </header>
 
@@ -286,87 +277,14 @@ function parsePaste() {
     factors.push('cheap');
   }
 
-  leads.unshift({ name, service: service || 'Unknown', factors, mode, rawText: text, conclusion: null });
+  leads.unshift({ name, service: service || 'Unknown', factors, mode });
   document.getElementById('paste-area').value = '';
 
   const score = scoreLead(factors, mode);
+  const cat = getCat(score, mode);
   res.className = 'parse-result ok';
   res.textContent = `✓ "${name}" added — Score: ${score >= 0 ? '+' : ''}${score} → ${getBadge(score, mode)}`;
   render();
-  generateConclusion(0);
-}
-
-// ── Conclusion generator (rule-based) ───────────────────────────
-function generateConclusion(idx) {
-  const lead = leads[idx];
-  if (!lead) return;
-  const score = scoreLead(lead.factors, lead.mode);
-  const cat = getCat(score, lead.mode);
-  const f = lead.factors;
-  const t = (lead.rawText || '').toLowerCase();
-  const parts = [];
-
-  // Budget
-  if (f.includes('budget5k')) {
-    const m = t.match(/\$([0-9,]+)\s*[-–]\s*\$?([0-9,]+)/);
-    parts.push(m ? `Budget of ${m[0].trim()} is well above the $5k threshold, making this a high-revenue opportunity.` : 'Budget is confirmed above $5k, making this a strong revenue opportunity.');
-  } else if (f.includes('budget3k') || f.includes('budget')) {
-    const m = t.match(/\$([0-9,]+)\s*[-–]\s*\$?([0-9,]+)/);
-    parts.push(m ? `Budget of ${m[0].trim()} meets the minimum $3k threshold.` : 'Budget meets the $3k minimum threshold.');
-  } else {
-    parts.push('No clear budget was mentioned — the client may be price-shopping or undecided on spend.');
-  }
-
-  // Business
-  if (f.includes('biz')) {
-    const bizType = t.includes('small business') ? 'small business' : t.includes('company') ? 'established company' : 'existing business';
-    parts.push(`This is an ${bizType}, which typically means real budget and faster hiring decisions.`);
-  }
-
-  // Urgency
-  if (f.includes('urgent')) {
-    const signal = t.includes('contact urgently') ? '"Contact Urgently" flag on Bark' : t.includes('as soon as possible') ? '"as soon as possible" timeline' : 'urgency signals in the listing';
-    parts.push(`There is a strong urgency signal (${signal}), so responding quickly is critical.`);
-  }
-
-  // Decision maker / hiring intent
-  if (f.includes('decision')) {
-    const signal = t.includes('definitely going to hire') ? '"definitely going to hire someone"' : t.includes('ready to hire') ? '"ready to hire now"' : 'strong hiring intent';
-    parts.push(`The client stated ${signal}, indicating they are a serious buyer, not just browsing.`);
-  } else if (!f.includes('decision') && lead.mode === 'basic') {
-    parts.push('No strong hiring intent was detected — the client may still be in early research mode.');
-  }
-
-  // Clear requirements
-  if (f.includes('clear')) {
-    parts.push('The lead provided detailed requirements across multiple questions, making it easy to send a targeted proposal.');
-  }
-
-  // E-commerce
-  if (f.includes('ecomm')) {
-    parts.push('An e-commerce project typically involves ongoing work and higher contract value.');
-  }
-
-  // Cheap wording
-  if (f.includes('cheap')) {
-    parts.push('Warning: the lead used price-sensitive language, which is a red flag for low-budget or difficult clients.');
-  }
-
-  // Final verdict sentence
-  if (cat === 'buy') {
-    parts.push(`Overall, this is a high-quality lead worth purchasing — the combination of ${f.filter(x=>x!=='cheap').length} positive signals puts it well above the buy threshold.`);
-  } else if (cat === 'review') {
-    parts.push('This lead has some positive signals but also gaps — consider buying if your schedule allows, but it\'s not a guaranteed win.');
-  } else {
-    parts.push('The lead lacks enough qualifying signals to justify the credit spend — skip and wait for a stronger opportunity.');
-  }
-
-  lead.conclusion = parts.join(' ');
-  render();
-}
-
-function getCatLabel(cat) {
-  return { buy: 'Buy this lead', review: 'Review', skip: 'Skip' }[cat] || cat;
 }
 
 // ── Mode switch ──────────────────────────────────────────────────
@@ -442,12 +360,6 @@ function render() {
         return `<span class="ftag ${isNeg ? 'neg' : 'pos'}">${m.factors[f]?.label || f}</span>`;
       }).join('');
       const modeTag = l.mode !== mode ? `<span class="ftag" style="background:#e8e8ff;color:#3a35b0;border-color:#a09de0">${m.label}</span>` : '';
-      const conclusionHtml = l.conclusion
-        ? `<div class="conclusion ${l.conclusion === 'loading' ? '' : cat}">
-            <div class="conclusion-label">Why this score</div>
-            <div class="conclusion-text ${l.conclusion === 'loading' ? 'loading' : ''}">${l.conclusion === 'loading' ? 'Analyzing lead...' : l.conclusion}</div>
-           </div>`
-        : '';
       return `<div class="lead-card ${cat}">
         <div class="lead-top">
           <div>
@@ -461,7 +373,6 @@ function render() {
           <span class="score-label">Score</span>
           <span class="score-val ${cat}">${score >= 0 ? '+' : ''}${score}</span>
         </div>
-        ${conclusionHtml}
       </div>`;
     }).join('');
   }
